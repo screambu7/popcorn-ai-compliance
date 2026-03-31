@@ -1,0 +1,74 @@
+{
+  "name": "KYC Antilavado Popcorn",
+  "description": "Webhook — Clasificación actividades vulnerables Art.17 LFPIORPI, detección PEP, umbrales UMA 2026",
+  "nodes": [
+    {
+      "id": "webhook-trigger",
+      "name": "Webhook KYC",
+      "type": "n8n-nodes-base.webhook",
+      "parameters": {
+        "path": "/kyc/nuevo",
+        "method": "POST",
+        "responseMode": "onReceived"
+      }
+    },
+    {
+      "id": "classify-activity",
+      "name": "Clasificar Actividad Vulnerable",
+      "type": "n8n-nodes-base.function",
+      "parameters": {
+        "functionCode": "// Art. 17 LFPIORPI — 14 actividades vulnerables\nconst UMA_DIARIO_2026 = 117.31;\nconst UMA_MENSUAL_2026 = 3568.94;\n\nconst ACTIVIDADES_VULNERABLES = {\n  'I': { nombre: 'Juegos con apuestas', umbral_aviso_umas: 645, umbral_reporte_umas: 1500 },\n  'II': { nombre: 'Tarjetas de servicios', umbral_aviso_umas: 645, umbral_reporte_umas: 1500 },\n  'III': { nombre: 'Traslado o custodia de dinero', umbral_aviso_umas: 645, umbral_reporte_umas: 1500 },\n  'IV': { nombre: 'Blindaje de vehículos', umbral_aviso_umas: 2410, umbral_reporte_umas: null },\n  'V': { nombre: 'Traslado de valores', umbral_aviso_umas: 645, umbral_reporte_umas: 1500 },\n  'VI': { nombre: 'Gestión de activos', umbral_aviso_umas: 645, umbral_reporte_umas: 1500 },\n  'VII': { nombre: 'Inmobiliaria', umbral_aviso_umas: 8025, umbral_reporte_umas: 16050 },\n  'VIII': { nombre: 'Joyas, metales, arte', umbral_aviso_umas: 645, umbral_reporte_umas: 1500 },\n  'IX': { nombre: 'Vehículos', umbral_aviso_umas: 3210, umbral_reporte_umas: 6420 },\n  'X': { nombre: 'Casas de cambio / divisas', umbral_aviso_umas: 645, umbral_reporte_umas: 1500 },\n  'XI': { nombre: 'Tarjetas de crédito / prepago', umbral_aviso_umas: 645, umbral_reporte_umas: 1500 },\n  'XII': { nombre: 'Fideicomisos', umbral_aviso_umas: 645, umbral_reporte_umas: 1500 },\n  'XIII': { nombre: 'Servicios notariales / fedatarios', umbral_aviso_umas: 645, umbral_reporte_umas: 1500 },\n  'XIV': { nombre: 'Servicios profesionales independientes', umbral_aviso_umas: 645, umbral_reporte_umas: 1500 }\n};\n\nconst { actividad_clave, monto, rfc, nombre, es_pep } = $json;\nconst actividad = ACTIVIDADES_VULNERABLES[actividad_clave];\n\nif (!actividad) {\n  return [{ json: { error: 'Actividad no reconocida', actividad_clave } }];\n}\n\nconst umas = monto / UMA_DIARIO_2026;\nconst supera_aviso = umas >= actividad.umbral_aviso_umas;\nconst supera_reporte = actividad.umbral_reporte_umas && umas >= actividad.umbral_reporte_umas;\n\nlet nivel_riesgo = 'bajo';\nif (es_pep || supera_reporte) nivel_riesgo = 'alto';\nelse if (supera_aviso) nivel_riesgo = 'medio';\n\nreturn [{\n  json: {\n    rfc, nombre, actividad_clave,\n    actividad_nombre: actividad.nombre,\n    monto, moneda: 'MXN',\n    umas_equivalente: Math.round(umas),\n    supera_umbral_aviso: supera_aviso,\n    supera_umbral_reporte: supera_reporte,\n    es_pep: !!es_pep,\n    nivel_riesgo,\n    requiere_reporte_uif: supera_reporte || es_pep,\n    uma_diario_2026: UMA_DIARIO_2026\n  }\n}];"
+      }
+    },
+    {
+      "id": "save-expediente",
+      "name": "Crear Expediente en Laravel",
+      "type": "n8n-nodes-base.httpRequest",
+      "parameters": {
+        "url": "https://compliance.popcorn.mx/api/expedientes",
+        "method": "POST",
+        "headers": { "Authorization": "Bearer {{ $env.LARAVEL_API_TOKEN }}" },
+        "body": "={{ JSON.stringify($json) }}",
+        "bodyContentType": "json"
+      }
+    },
+    {
+      "id": "alert-high-risk",
+      "name": "Alerta Riesgo Alto",
+      "type": "n8n-nodes-base.if",
+      "parameters": {
+        "conditions": {
+          "string": [{ "value1": "={{ $json.nivel_riesgo }}", "operation": "equal", "value2": "alto" }]
+        }
+      }
+    },
+    {
+      "id": "notify-compliance-officer",
+      "name": "Notificar Oficial Compliance",
+      "type": "n8n-nodes-base.emailSend",
+      "parameters": {
+        "toEmail": "compliance@popcorn.mx",
+        "subject": "⚠️ ALERTA: Operación Riesgo Alto — {{ $json.nombre }}",
+        "text": "Se detectó una operación de riesgo ALTO:\n\nCliente: {{ $json.nombre }} ({{ $json.rfc }})\nActividad: {{ $json.actividad_nombre }}\nMonto: ${{ $json.monto }} MXN ({{ $json.umas_equivalente }} UMAs)\nPEP: {{ $json.es_pep ? 'SÍ' : 'NO' }}\nRequiere reporte UIF: {{ $json.requiere_reporte_uif ? 'SÍ' : 'NO' }}"
+      }
+    }
+  ],
+  "connections": {
+    "webhook-trigger": { "main": [["classify-activity"]] },
+    "classify-activity": { "main": [["save-expediente"]] },
+    "save-expediente": { "main": [["alert-high-risk"]] },
+    "alert-high-risk": { "true": [["notify-compliance-officer"]] }
+  },
+  "meta": {
+    "version": "1.0.0",
+    "created": "2026-03-31",
+    "ley": "LFPIORPI — Art. 17",
+    "uma_2026": {
+      "diario": 117.31,
+      "mensual": 3568.94,
+      "anual": 42826.86
+    },
+    "actividades_vulnerables_total": 14,
+    "retencion_obligatoria_anios": 10
+  }
+}

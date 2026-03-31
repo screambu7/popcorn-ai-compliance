@@ -1,0 +1,59 @@
+{
+  "name": "Alertas Fiscales Popcorn",
+  "description": "Cron Mon-Fri 7AM — alerta obligaciones ISR/IVA día 17, DIOT, contabilidad electrónica, declaración anual",
+  "nodes": [
+    {
+      "id": "trigger-cron",
+      "name": "Cron Laboral 7AM",
+      "type": "n8n-nodes-base.cron",
+      "parameters": {
+        "cronExpression": "0 7 * * 1-5"
+      }
+    },
+    {
+      "id": "check-obligations",
+      "name": "Verificar Obligaciones del Día",
+      "type": "n8n-nodes-base.function",
+      "parameters": {
+        "functionCode": "// Lógica: verificar si hoy es día de obligación fiscal\n// ISR/IVA: día 17 de cada mes\n// DIOT: día 17 del mes siguiente\n// Contabilidad electrónica: día 3 del mes siguiente\n// Declaración anual: 31 marzo (PF) / 31 marzo (PM)\nconst today = new Date();\nconst day = today.getDate();\nconst month = today.getMonth() + 1;\nconst obligations = [];\n\nif (day === 17) {\n  obligations.push({ tipo: 'ISR', descripcion: 'Pago provisional ISR', urgente: true });\n  obligations.push({ tipo: 'IVA', descripcion: 'Pago mensual IVA', urgente: true });\n  obligations.push({ tipo: 'DIOT', descripcion: 'Declaración Informativa de Operaciones con Terceros', urgente: true });\n}\nif (day === 3) {\n  obligations.push({ tipo: 'CONTABILIDAD', descripcion: 'Envío contabilidad electrónica al SAT', urgente: false });\n}\nif (month === 3 && day === 31) {\n  obligations.push({ tipo: 'ANUAL', descripcion: 'Declaración anual PM e ISR', urgente: true });\n}\n\nreturn [{ json: { obligations, fecha: today.toISOString(), hasObligations: obligations.length > 0 } }];"
+      }
+    },
+    {
+      "id": "send-email",
+      "name": "Enviar Email",
+      "type": "n8n-nodes-base.emailSend",
+      "parameters": {
+        "toEmail": "={{ $json.client_email }}",
+        "subject": "Recordatorio: Obligaciones Fiscales {{ $json.fecha }}",
+        "text": "Estimado cliente,\n\nTiene las siguientes obligaciones fiscales próximas:\n\n{{ $json.obligations.map(o => '• ' + o.tipo + ': ' + o.descripcion).join('\\n') }}\n\nPopcorn Compliance"
+      }
+    },
+    {
+      "id": "send-whatsapp",
+      "name": "Enviar WhatsApp",
+      "type": "n8n-nodes-base.httpRequest",
+      "parameters": {
+        "url": "https://api.whatsapp.com/send",
+        "method": "POST",
+        "body": {
+          "to": "={{ $json.client_phone }}",
+          "message": "Popcorn Compliance: Recordatorio obligaciones fiscales de hoy. Revise su correo."
+        }
+      }
+    }
+  ],
+  "connections": {
+    "trigger-cron": { "main": [["check-obligations"]] },
+    "check-obligations": { "main": [["send-email"]] },
+    "send-email": { "main": [["send-whatsapp"]] }
+  },
+  "meta": {
+    "version": "1.0.0",
+    "created": "2026-03-31",
+    "uma_2026": 117.31,
+    "domains": {
+      "n8n": "n8n.popcorn.mx",
+      "app": "compliance.popcorn.mx"
+    }
+  }
+}
