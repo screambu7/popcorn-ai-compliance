@@ -11,4 +11,6 @@ Route::get('/user', function (Request $request) {
 // n8n Webhooks (protegidos por Sanctum token)
 Route::middleware('auth:sanctum')->prefix('webhooks')->group(function () {
     Route::post('/kyc', [WebhookController::class, 'kyc']);
+    Route::post('/operacion', [WebhookController::class, 'operacion']);
+    Route::post('/screening', [WebhookController::class, 'screening']);
 });
