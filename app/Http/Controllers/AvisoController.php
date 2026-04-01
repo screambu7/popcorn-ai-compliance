@@ -5,7 +5,9 @@ namespace App\Http\Controllers;
 use App\Models\AuditLog;
 use App\Models\AvisoSppld;
 use App\Models\Operacion;
+use App\Services\SppldXmlGenerator;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 
 class AvisoController extends Controller
@@ -75,16 +77,24 @@ class AvisoController extends Controller
                 ->update(['aviso_id' => $aviso->id, 'estado' => 'incluida_aviso']);
         }
 
+        // Generate XML file
+        try {
+            SppldXmlGenerator::generarYGuardar($aviso);
+        } catch (\Exception $e) {
+            // XML generation failed but aviso was created
+            $aviso->update(['notas' => 'Error generando XML: ' . $e->getMessage()]);
+        }
+
         AuditLog::registrar(
             accion: 'aviso_generado',
             entidadTipo: 'AvisoSppld',
             entidadId: $aviso->id,
-            datosNuevos: $aviso->toArray(),
-            notas: "Periodo: {$mes}/{$anio}. Operaciones vinculadas: {$operaciones->count()}",
+            datosNuevos: $aviso->fresh()->toArray(),
+            notas: "Periodo: {$mes}/{$anio}. Operaciones vinculadas: {$operaciones->count()}. XML: {$aviso->xml_path}",
         );
 
         return redirect()->route('avisos.show', $aviso)
-            ->with('success', "Aviso {$aviso->folio} generado con {$operaciones->count()} operaciones.");
+            ->with('success', "Aviso {$aviso->folio} generado con {$operaciones->count()} operaciones. XML listo para descargar.");
     }
 
     public function show(AvisoSppld $aviso)
@@ -114,6 +124,17 @@ class AvisoController extends Controller
 
         return redirect()->route('avisos.show', $aviso)
             ->with('success', 'Aviso aprobado por oficial de cumplimiento.');
+    }
+
+    public function downloadXml(AvisoSppld $aviso)
+    {
+        if (!$aviso->xml_path || !Storage::exists($aviso->xml_path)) {
+            return back()->with('error', 'XML no disponible. Regenere el aviso.');
+        }
+
+        return Storage::download($aviso->xml_path, "{$aviso->folio}.xml", [
+            'Content-Type' => 'application/xml',
+        ]);
     }
 
     public function updateEstado(Request $request, AvisoSppld $aviso)

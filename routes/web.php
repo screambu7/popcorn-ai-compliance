@@ -38,6 +38,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('avisos/generate', [AvisoController::class, 'generate'])->name('avisos.generate');
         Route::post('avisos/{aviso}/approve', [AvisoController::class, 'approve'])->name('avisos.approve');
         Route::put('avisos/{aviso}/estado', [AvisoController::class, 'updateEstado'])->name('avisos.updateEstado');
+        Route::get('avisos/{aviso}/download-xml', [AvisoController::class, 'downloadXml'])->name('avisos.downloadXml');
     });
 
     // Screening — admin, oficial_cumplimiento only
