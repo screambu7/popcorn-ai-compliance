@@ -22,30 +22,36 @@ Route::get('/', function () {
 });
 
 Route::middleware(['auth', 'verified'])->group(function () {
+    // Dashboard — all authenticated roles
     Route::get('/dashboard', DashboardController::class)->name('dashboard');
 
-    Route::resource('clients', ClientController::class);
-    Route::resource('expedientes', ExpedienteController::class)->except(['edit', 'destroy']);
+    // Clients, Operaciones, Expedientes — admin, oficial_cumplimiento, operador
+    Route::middleware('role:admin,oficial_cumplimiento,operador')->group(function () {
+        Route::resource('clients', ClientController::class);
+        Route::resource('expedientes', ExpedienteController::class)->except(['edit', 'destroy']);
+        Route::resource('operaciones', OperacionController::class)->except(['edit', 'destroy']);
+    });
 
-    // Operaciones
-    Route::resource('operaciones', OperacionController::class)->except(['edit', 'destroy']);
+    // Avisos SPPLD — admin, oficial_cumplimiento only
+    Route::middleware('role:admin,oficial_cumplimiento')->group(function () {
+        Route::resource('avisos', AvisoController::class)->only(['index', 'show']);
+        Route::post('avisos/generate', [AvisoController::class, 'generate'])->name('avisos.generate');
+        Route::post('avisos/{aviso}/approve', [AvisoController::class, 'approve'])->name('avisos.approve');
+        Route::put('avisos/{aviso}/estado', [AvisoController::class, 'updateEstado'])->name('avisos.updateEstado');
+    });
 
-    // Avisos SPPLD
-    Route::resource('avisos', AvisoController::class)->only(['index', 'show']);
-    Route::post('avisos/generate', [AvisoController::class, 'generate'])->name('avisos.generate');
-    Route::post('avisos/{aviso}/approve', [AvisoController::class, 'approve'])->name('avisos.approve');
-    Route::put('avisos/{aviso}/estado', [AvisoController::class, 'updateEstado'])->name('avisos.updateEstado');
+    // Screening — admin, oficial_cumplimiento only
+    Route::middleware('role:admin,oficial_cumplimiento')->group(function () {
+        Route::get('screening', [ScreeningController::class, 'index'])->name('screening.index');
+        Route::put('screening/{result}/review', [ScreeningController::class, 'review'])->name('screening.review');
+    });
 
-    // Screening
-    Route::get('screening', [ScreeningController::class, 'index'])->name('screening.index');
-    Route::put('screening/{result}/review', [ScreeningController::class, 'review'])->name('screening.review');
-
-    // Documentos
+    // Documentos — all authenticated users
     Route::resource('documentos', DocumentoController::class)->only(['index', 'store']);
     Route::post('documentos/{documento}/verify', [DocumentoController::class, 'verify'])->name('documentos.verify');
     Route::get('documentos/{documento}/download', [DocumentoController::class, 'download'])->name('documentos.download');
 
-    // Profile
+    // Profile — all authenticated users
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
