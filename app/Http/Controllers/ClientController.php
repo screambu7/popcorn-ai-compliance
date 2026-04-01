@@ -51,7 +51,7 @@ class ClientController extends Controller
     {
         $validated = $request->validate([
             'razon_social' => 'required|string|max:255',
-            'rfc' => 'required|string|size:13|unique:clients,rfc',
+            'rfc' => 'required|string|min:12|max:13|unique:clients,rfc',
             'email' => 'required|email|max:255',
             'telefono' => 'nullable|string|max:20',
             'regimen_fiscal' => 'required|string|max:10',
@@ -97,7 +97,7 @@ class ClientController extends Controller
     {
         $validated = $request->validate([
             'razon_social' => 'required|string|max:255',
-            'rfc' => 'required|string|size:13|unique:clients,rfc,' . $client->id,
+            'rfc' => 'required|string|min:12|max:13|unique:clients,rfc,' . $client->id,
             'email' => 'required|email|max:255',
             'telefono' => 'nullable|string|max:20',
             'regimen_fiscal' => 'required|string|max:10',
